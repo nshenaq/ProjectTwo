@@ -1,36 +1,31 @@
----
 title: 'Project 2: Data Mining, Classification, Prediction'
 author: "SDS322E"
 date: ''
 output:
   html_document:
-    toc: yes
-    toc_float:
-      collapsed: no
-      smooth_scroll: yes
-  pdf_document:
-    toc: no
+  toc: yes
+toc_float:
+  collapsed: no
+smooth_scroll: yes
+pdf_document:
+  toc: no
 ---
-
-```{r setup, include=FALSE}
+  
+  ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, eval = TRUE, fig.align = "center", warning = F, message = F,
-tidy=TRUE, tidy.opts=list(width.cutoff=60), R.options=list(max.print=100))
-
+                      tidy=TRUE, tidy.opts=list(width.cutoff=60), R.options=list(max.print=100))
 class_diag <- function(score, truth, positive, cutoff=.5){
-
   pred <- factor(score>cutoff,levels=c("TRUE","FALSE"))
   truth <- factor(truth==positive, levels=c("TRUE","FALSE"))
-
   tab<-table(truth, pred)
   acc=sum(diag(tab))/sum(tab)
   sens=tab[1,1]/rowSums(tab)[1]
   spec=tab[2,2]/rowSums(tab)[2]
   ppv=tab[1,1]/colSums(tab)[1]
-
-#CALCULATE F1
+  #CALCULATE F1
   f1=2*(sens*ppv)/(sens+ppv)
   
-#CALCULATE EXACT AUC
+  #CALCULATE EXACT AUC
   truth<-as.numeric(truth=="TRUE")
   ord<-order(score, decreasing=TRUE)
   score <- score[ord]; truth <- truth[ord]
@@ -46,60 +41,263 @@ class_diag <- function(score, truth, positive, cutoff=.5){
 
 # Mining, Classification, Prediction
 
-## Name and EID here
+## Noor Shenaq, ns32468
 
 ### Introduction 
 
-Paragraph or two introducing your datasets and variables, why they are interesting to you, etc. See instructions for more information
+The data from this study was obtained from the Journal of the American Statistical Association. The study was conducted by Stanford University for the purpose of seeing if their heart transplant program had a relationship with life expectancy. I chose this study because someone I know recieved a successful heart transplant.
+There are a total of 8 variables and 103 observations in this data set:The ID number of the patient, they year of acceptance  as a heart transplant candidate, the age of the patient, the survival status,the survival time, whether the patient had a prior surgery, the transplant status, and the wait time.      
 
 ```{R}
+
 library(tidyverse)
-# read your datasets in here, e.g., with read_csv()
+library(dplyr)
+library(readr)
+library(gt)
+data <- read.csv("heart_transplant.csv") %>% select(-wait) %>% na.omit()
 
-# if your dataset needs tidying, do so here
+data %>% glimpse
 
-# any other code here
 ```
+
 
 ### Cluster Analysis
 
+*First we will be clustering our data by selecting 3 numeric variables: acceptyear, age, and survtime. The average silhoutte width is obtained below* 
+
+
+```{r}
+library(cluster)
+library(ggplot2)
+library(GGally)
+set.seed(322)
+
+#pam1$silinfo$avg.width
+
+#plot(pam1,which=2)
+pam_data <- data %>% select(acceptyear, age, survtime)
+
+sil_width<-vector()
+for(i in 2:10){  
+  pam_fit <- pam(pam_data, k = i)  
+  sil_width[i] <- pam_fit$silinfo$avg.width  
+}
+
+ggplot()+geom_line(aes(x=1:10,y=sil_width))+scale_x_continuous(name="k",breaks=1:10)
+
+
+
+```
+*Because the average silhoutte width is between .51 and .70, this means that a reasonable structure has been found.* 
+
 ```{R}
 library(cluster)
-# clustering code here
+
+clust_data <- data%>%dplyr::select(acceptyear, age, survtime)
+
+``` 
+*Next we will be using the PAM function to run the cluster analysis. * 
+
+```{r}
+pam1 <-clust_data %>% pam(k=2)
+pam1
+
 ```
 
-Discussion of clustering here
-    
-    
+*As we can see above, the mediod is the central most observation. Then we will plot by saving the cluster assignments to the data set and use them to color the points* 
+
+
+```{r}
+pamclust<- clust_data %>% mutate(cluster=as.factor(pam1$clustering))
+pamclust %>% ggplot(aes(age,survtime,color=cluster)) + geom_point()
+
+```
+*Then we will summarize each cluster* 
+
+```{r}
+pamclust %>% group_by(cluster) %>% summarize_if(is.numeric,mean,na.rm=T)
+```
+
+*The final mediods are obtained below. They will be representative of their cluster* 
+
+```{r}
+data%>%slice(pam1$id.med)
+```
+
+
+```{r}
+
+```
+
+*To discuss the goodness of fit it was plotted below. It was then interpreted.* 
+
+```{r}
+
+```
+*Because the average silhoutte width is between .51 and .70, this means that a reasonable structure has been found.* 
+
+
 ### Dimensionality Reduction with PCA
 
+*We will now be conducting principle component analysis.It is a procedure that converts many correlated variables into a few uncorrelated variables that are named principal components. We first prepare the data by subtracting the mean from each variable and dividing by the standard deviation.This standardizes the data *   
+
 ```{R}
-# PCA code here
+numeric_data <- data %>% select_if(is.numeric) %>% 
+    scale
+
+rownames(numeric_data) <- data$name
+
+
 ```
 
-Discussions of PCA here. 
+
+```{r}
+pca_data <- princomp(numeric_data)
+
+names(pca_data)
+```
+
+*We then will square to convert SDs to eigenvalues. Next, the proportion of variance explained by each PC is computed. We then run a scree plot to show the variance by each PC. This is to decide how many PCs to keep.* 
+
+```{r}
+eigval <- pca_data$sdev^2
+varprop = round(eigval/sum(eigval), 2)
+
+ggplot() + geom_bar(aes(y = varprop, x = 1:5), stat = "identity") + 
+    xlab("") + geom_path(aes(y = varprop, x = 1:5)) + geom_text(aes(x = 1:5, 
+    y = varprop, label = round(varprop, 2)), vjust = 1, col = "white", 
+    size = 5) + scale_y_continuous(breaks = seq(0, 0.6, 0.2), 
+    labels = scales::percent) + scale_x_continuous(breaks = 1:10)
+```
+
+
+*Then, to interpret the PCs we will run the summary function to see the different variables in the PCA* 
+
+```{r}
+summary(pca_data, loadings = T)
+```
+```{r}
+pca_data$loadings[1:5, 1:2] %>% as.data.frame %>% rownames_to_column %>% 
+    ggplot() + geom_hline(aes(yintercept = 0), lty = 2) + geom_vline(aes(xintercept = 0), 
+    lty = 2) + ylab("PC2") + xlab("PC1") + geom_segment(aes(x = 0, 
+    y = 0, xend = Comp.1, yend = Comp.2), arrow = arrow(), col = "red") + 
+    geom_label(aes(x = Comp.1 * 1.1, y = Comp.2 * 1.1, label = rowname))
+
+
+```
 
 ###  Linear Classifier
 
+*We will now look at a logistic regression to predict binary variable. The coefficients were interpreted and the class diagram expression was run*  
 ```{R}
 # linear classifier code here
+
+class_diag<-function(probs,truth){
+  
+  tab<-table(factor(probs>.5,levels=c("FALSE","TRUE")),truth)
+  acc=sum(diag(tab))/sum(tab)
+  sens=tab[2,2]/colSums(tab)[2]
+  spec=tab[1,1]/colSums(tab)[1]
+  ppv=tab[2,2]/rowSums(tab)[2]
+
+  if(is.numeric(truth)==FALSE & is.logical(truth)==FALSE) truth<-as.numeric(truth)-1
+  
+  #CALCULATE EXACT AUC
+  ord<-order(probs, decreasing=TRUE)
+  probs <- probs[ord]; truth <- truth[ord]
+  
+  TPR=cumsum(truth)/max(1,sum(truth)) 
+  FPR=cumsum(!truth)/max(1,sum(!truth))
+  
+  dup<-c(probs[-1]>=probs[-length(probs)], FALSE)
+  TPR<-c(0,TPR[!dup],1); FPR<-c(0,FPR[!dup],1)
+  
+  n <- length(TPR)
+  auc<- sum( ((TPR[-1]+TPR[-n])/2) * (FPR[-1]-FPR[-n]) )
+
+  data.frame(acc,sens,spec,ppv,auc)
+}
+
+data_5 <- data %>% select(3,4,5,6) %>% mutate(y = ifelse(survived == "alive",1,0))
+
+
+fit<-glm(y~acceptyear + age + survtime , data=data_5, family="binomial")
+
+
+#data_5 %>% ggplot(aes(age,survtime)) + geom_point()+geom_smooth(method="lm", se=F)+ylim(0,1) 
+
+score <- predict(fit, type="response")
+score %>% round(3)
+
+data_5$prob <-predict(fit,type="response")
+
+fit <- lm(y ~ survtime + age, data=data_5)
+
+class_diag(data_5$prob ,data_5$survived)  
+
+
+```
+*From the model above, we can see that the accuracy is .09708738, the sensitivty is .08, the specifity is .1429571, the ppv is .2*
+
+
+
+*A confustion matrix was created*
+
+```{r}
+table(predict=as.numeric(data_5$prob >.5),truth=data_5$y)%>%addmargins
 ```
 
+
+
+*An ROC plot was created. * 
+
+```{r}
+library(plotROC)
+ROCplot<-ggplot(data_5)+geom_roc(aes(d=y,m=prob), n.cuts=0) + geom_abline(slope = 1)
+ROCplot
+
+```
+
+```{r}
+calc_auc(ROCplot)
+```
+  
+*Then we will asses how well this model can generalize a new data set* 
+  
 ```{R}
 # cross-validation of linear classifier here
+
+
+
 ```
 
 Discussion here
 
 ### Non-Parametric Classifier
 
+*Here we will be using the k nearest neighbors method* 
 ```{R}
 library(caret)
 # non-parametric classifier code here
+
+knn_fit <- knn3(factor(y==1,levels=c("TRUE","FALSE")) ~ acceptyear + age + survtime, data=data_5, k=5)
+y_hat_knn <- predict(knn_fit,data_5)
+y_hat_knn
+
+table(truth= factor(data_5$y==1, levels=c("TRUE","FALSE")),
+      prediction= factor(y_hat_knn[,1]>.5, levels=c("TRUE","FALSE")))
+
+
+class_diag(y_hat_knn[,1],data_5$age) 
 ```
 
+*From the model above, the accuracy is 0.009708738, the senstivity is 0, the spec 1, the ppv is 0, and the auc is 1.*  
+
+*Now we will asses the cross-validation*  
 ```{R}
 # cross-validation of np classifier here
+
+
 ```
 
 Discussion
@@ -107,22 +305,31 @@ Discussion
 
 ### Regression/Numeric Prediction
 
+*Lastly, I will fit a regression tree to my entire dataset to predict one of my numeric variables from at least 2 other variables* 
 ```{R}
 # regression model code here
+
+
 ```
 
+
+*we will then perform k-fold cv and run the class_diagram function*
 ```{R}
 # cross-validation of regression model here
+
+
 ```
 
-Discussion
+
 
 ### Python 
 
+*'Reticulate was used below to share objects betwee R and python.* 
 ```{R}
 library(reticulate)
 ```
 
+*Below is a python code chunk* 
 ```{python}
 # python code here
 ```
@@ -136,3 +343,15 @@ Include concluding remarks here, if any
 
 
 
+© 2021 GitHub, Inc.
+Terms
+Privacy
+Security
+Status
+Docs
+Contact GitHub
+Pricing
+API
+Training
+Blog
+About
